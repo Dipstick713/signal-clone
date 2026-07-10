@@ -56,8 +56,10 @@ interface ChatState {
   fetchConversations: () => Promise<void>;
   select: (id: number) => Promise<void>;
   startDirect: (userId: number) => Promise<void>;
+  startGroup: (name: string, memberIds: number[]) => Promise<number>;
   sendMessage: (body: string) => void;
   sendTyping: (isTyping: boolean) => void;
+  refreshDetail: () => Promise<void>;
   reset: () => void;
 }
 
@@ -168,6 +170,20 @@ export const useChat = create<ChatState>((set, get) => ({
     await get().select(conv.id);
   },
 
+  startGroup: async (name, memberIds) => {
+    const conv = await api.createGroup(name, memberIds);
+    set((s) => ({ conversations: [conv, ...s.conversations] }));
+    await get().select(conv.id);
+    return conv.id;
+  },
+
+  refreshDetail: async () => {
+    const id = get().selectedId;
+    if (id === null) return;
+    const detail = await api.getConversation(id);
+    if (get().selectedId === id) set({ detail });
+  },
+
   sendMessage: (body) => {
     const text = body.trim();
     const conversationId = get().selectedId;
@@ -245,6 +261,8 @@ function handleEvent(event: WsEvent, set: SetState, get: () => ChatState) {
       return handlePresenceUpdate(event, set);
     case "presence.snapshot":
       return handlePresenceSnapshot(event, set);
+    case "conversation.removed":
+      return handleConversationRemoved(event, set, get);
   }
 }
 
@@ -276,6 +294,9 @@ function handleMessageNew(event: WsEvent, set: SetState, get: () => ChatState) {
 
   const known = state.conversations.some((c) => c.id === msg.conversation_id);
   if (!known) void get().fetchConversations();
+
+  // A system message (membership/name change) may have altered the member list.
+  if (msg.type === "system" && isSelected) void get().refreshDetail();
 
   // Report delivery for any received message; add read if we're viewing it.
   if (!isMine) {
@@ -360,4 +381,15 @@ function handlePresenceSnapshot(event: WsEvent, set: SetState) {
     ids.forEach((id) => (presence[id] = { online: true }));
     return { presence };
   });
+}
+
+function handleConversationRemoved(event: WsEvent, set: SetState, get: () => ChatState) {
+  const conversationId = event.conversation_id as number;
+  const wasSelected = get().selectedId === conversationId;
+  set((s) => ({
+    conversations: s.conversations.filter((c) => c.id !== conversationId),
+    ...(wasSelected
+      ? { selectedId: null, detail: null, messages: [], otherReceipts: {} }
+      : {}),
+  }));
 }

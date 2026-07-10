@@ -5,7 +5,7 @@ Signal's design, UX, and core messaging workflows. Real-time 1:1 and group
 chat, delivery/read receipts, typing indicators, and presence. End-to-end
 encryption is **simulated** (per the assignment brief), not cryptographically real.
 
-> **Status:** Phase 5 — receipts, typing indicators, and presence. See the
+> **Status:** Phase 6 — group messaging with admin controls. See the
 > [build phases](#build-phases) below.
 
 ## Tech Stack
@@ -85,8 +85,11 @@ joined_at              watermark   reply_to_id        FK → messages.id (quoted
 | POST   | `/api/conversations/direct`           | Open/create a 1:1 chat               |
 | POST   | `/api/conversations/group`            | Create a group                       |
 | GET    | `/api/conversations/{id}`             | Conversation detail + participants   |
+| PATCH  | `/api/conversations/{id}`             | Rename a group (admin)               |
 | GET    | `/api/conversations/{id}/messages`    | Paginated history (`?before=&limit=`)|
 | POST   | `/api/conversations/{id}/read`        | Advance read watermark               |
+| POST   | `/api/conversations/{id}/members`     | Add members to a group (admin)       |
+| DELETE | `/api/conversations/{id}/members/{u}` | Remove member (admin) / leave (self) |
 | WS     | `/ws?token=<jwt>`                     | Realtime channel (see events below)  |
 
 ### WebSocket events
@@ -145,8 +148,8 @@ npm run dev                         # serves on http://localhost:3000
 3. **Conversations** — list, search, contacts, seeded message history ✅
 4. **1:1 messaging** — WebSocket live send/receive, optimistic status ticks ✅
 5. **Receipts, typing, presence** — double-check receipts, typing dots, online/last-seen ✅
-6. Group messaging — creation, members, admin controls
-7. Signal experience pass — modals, search, toasts, settings, dark mode
+6. **Group messaging** — creation, member management, admin controls ✅
+7. Signal experience pass — settings, toasts, dark mode, responsive, keyboard
 8. Bonus features, deploy, and documentation
 
 ## Assumptions

@@ -111,4 +111,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message_id: messageId }),
     }),
+
+  addMembers: (conversationId: number, userIds: number[]) =>
+    request<ConversationDetail>(`/api/conversations/${conversationId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
+
+  removeMember: (conversationId: number, userId: number) =>
+    request<void>(`/api/conversations/${conversationId}/members/${userId}`, {
+      method: "DELETE",
+    }),
+
+  renameGroup: (conversationId: number, name: string) =>
+    request<ConversationDetail>(`/api/conversations/${conversationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
 };

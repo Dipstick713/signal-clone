@@ -14,6 +14,7 @@ from app.models.conversation import Conversation, Participant
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.conversation import (
+    AddMembersRequest,
     ConversationDetail,
     ConversationListItem,
     CreateDirectRequest,
@@ -21,10 +22,26 @@ from app.schemas.conversation import (
     MarkReadRequest,
     MessagePublic,
     ParticipantPublic,
+    RenameGroupRequest,
 )
 from app.schemas.user import UserPublic
+from app.services.messages import create_system_message, participant_ids
+from app.ws.manager import manager
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+
+
+async def _broadcast_system_message(db: DbSession, conversation_id: int, body: str):
+    """Persist a system notice and fan it out over the socket to all members."""
+    msg = create_system_message(db, conversation_id, body)
+    await manager.send_to_users(
+        participant_ids(db, conversation_id),
+        {
+            "type": "message.new",
+            "temp_id": None,
+            "message": MessagePublic.model_validate(msg).model_dump(mode="json"),
+        },
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -79,6 +96,47 @@ def _unread_count(db: DbSession, part: Participant, viewer_id: int) -> int:
             )
         )
         or 0
+    )
+
+
+def _require_admin(db: DbSession, conversation_id: int, user_id: int) -> Participant:
+    part = _require_participant(db, conversation_id, user_id)
+    if part.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return part
+
+
+def _require_group(db: DbSession, conversation_id: int) -> Conversation:
+    conv = db.get(Conversation, conversation_id)
+    if conv is None or conv.type != "group":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
+    return conv
+
+
+def _build_detail(db: DbSession, conv: Conversation, viewer_id: int) -> ConversationDetail:
+    title, color, url, other = _resolve_view(conv, viewer_id)
+    return ConversationDetail(
+        id=conv.id,
+        type=conv.type,
+        title=title,
+        avatar_color=color,
+        avatar_url=url,
+        created_by=conv.created_by,
+        participants=[
+            ParticipantPublic(
+                user=UserPublic.model_validate(p.user),
+                role=p.role,
+                last_read_message_id=p.last_read_message_id,
+                last_delivered_message_id=p.last_delivered_message_id,
+            )
+            for p in conv.participants
+        ],
+        other_user=UserPublic.model_validate(other) if other else None,
     )
 
 
@@ -209,25 +267,7 @@ def get_conversation(
     _require_participant(db, conversation_id, current_user.id)
     conv = db.get(Conversation, conversation_id)
     assert conv is not None
-    title, color, url, other = _resolve_view(conv, current_user.id)
-    return ConversationDetail(
-        id=conv.id,
-        type=conv.type,
-        title=title,
-        avatar_color=color,
-        avatar_url=url,
-        created_by=conv.created_by,
-        participants=[
-            ParticipantPublic(
-                user=UserPublic.model_validate(p.user),
-                role=p.role,
-                last_read_message_id=p.last_read_message_id,
-                last_delivered_message_id=p.last_delivered_message_id,
-            )
-            for p in conv.participants
-        ],
-        other_user=UserPublic.model_validate(other) if other else None,
-    )
+    return _build_detail(db, conv, current_user.id)
 
 
 @router.get("/{conversation_id}/messages", response_model=list[MessagePublic])
@@ -261,3 +301,89 @@ def mark_read(
     if part.last_read_message_id is None or payload.message_id > part.last_read_message_id:
         part.last_read_message_id = payload.message_id
         db.commit()
+
+
+@router.post("/{conversation_id}/members", response_model=ConversationDetail)
+async def add_members(
+    conversation_id: int,
+    payload: AddMembersRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Admin-only: add members to a group and post a system notice."""
+    conv = _require_group(db, conversation_id)
+    _require_admin(db, conversation_id, current_user.id)
+
+    existing = participant_ids(db, conversation_id)
+    to_add = [uid for uid in dict.fromkeys(payload.user_ids) if uid not in existing]
+    users = db.scalars(select(User).where(User.id.in_(to_add))).all() if to_add else []
+    if len(users) != len(to_add):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown user id"
+        )
+
+    for u in users:
+        db.add(Participant(conversation_id=conversation_id, user_id=u.id, role="member"))
+    db.commit()
+
+    if users:
+        names = ", ".join(u.display_name for u in users)
+        await _broadcast_system_message(
+            db, conversation_id, f"{current_user.display_name} added {names}"
+        )
+    db.refresh(conv)
+    return _build_detail(db, conv, current_user.id)
+
+
+@router.delete("/{conversation_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(
+    conversation_id: int,
+    user_id: int,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Remove a member (admin), or leave the group (removing yourself)."""
+    _require_group(db, conversation_id)
+    target = _require_participant(db, conversation_id, user_id)
+    is_self = user_id == current_user.id
+    if not is_self:
+        _require_admin(db, conversation_id, current_user.id)
+
+    target_user = db.get(User, user_id)
+    db.delete(target)
+    db.commit()
+
+    display = target_user.display_name if target_user else "Someone"
+    body = (
+        f"{display} left the group"
+        if is_self
+        else f"{current_user.display_name} removed {display}"
+    )
+    await _broadcast_system_message(db, conversation_id, body)
+    # Tell the removed user's clients to drop the conversation.
+    await manager.send_to_users(
+        {user_id},
+        {"type": "conversation.removed", "conversation_id": conversation_id},
+    )
+
+
+@router.patch("/{conversation_id}", response_model=ConversationDetail)
+async def rename_group(
+    conversation_id: int,
+    payload: RenameGroupRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Admin-only: rename a group."""
+    conv = _require_group(db, conversation_id)
+    _require_admin(db, conversation_id, current_user.id)
+
+    conv.name = payload.name.strip()
+    db.commit()
+    await _broadcast_system_message(
+        db,
+        conversation_id,
+        f'{current_user.display_name} changed the group name to "{conv.name}"',
+    )
+    db.refresh(conv)
+    return _build_detail(db, conv, current_user.id)

@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar } from "@/components/Avatar";
+import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
 import {
   useChat,
   type ChatMessage,
@@ -51,6 +52,7 @@ export function ChatPane() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
+  const [infoOpen, setInfoOpen] = useState(false);
   const typingActive = useRef(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -124,26 +126,36 @@ export function ChatPane() {
 
   return (
     <main className="flex flex-1 flex-col bg-app">
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b border-border px-4 py-2.5">
-        {detail && (
-          <Avatar
-            name={detail.title}
-            color={detail.avatar_color ?? "#6b6b6b"}
-            url={detail.avatar_url}
-            size={38}
-            online={
-              detail.type === "direct" && detail.other_user
-                ? presence[detail.other_user.id]?.online
-                : undefined
-            }
-          />
-        )}
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{detail?.title ?? "…"}</p>
-          <p className="truncate text-xs text-secondary">{subtitle}</p>
-        </div>
+      {/* Header — clickable for groups to open the info/management panel */}
+      <header className="border-b border-border">
+        <button
+          onClick={() => isGroup && setInfoOpen(true)}
+          disabled={!isGroup}
+          className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${
+            isGroup ? "transition hover:bg-hover" : "cursor-default"
+          }`}
+        >
+          {detail && (
+            <Avatar
+              name={detail.title}
+              color={detail.avatar_color ?? "#6b6b6b"}
+              url={detail.avatar_url}
+              size={38}
+              online={
+                detail.type === "direct" && detail.other_user
+                  ? presence[detail.other_user.id]?.online
+                  : undefined
+              }
+            />
+          )}
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{detail?.title ?? "…"}</p>
+            <p className="truncate text-xs text-secondary">{subtitle}</p>
+          </div>
+        </button>
       </header>
+
+      {infoOpen && isGroup && <GroupInfoModal onClose={() => setInfoOpen(false)} />}
 
       {wsStatus !== "open" && (
         <div className="bg-amber-500/15 px-4 py-1 text-center text-xs text-amber-600 dark:text-amber-400">
@@ -306,7 +318,7 @@ function MessageBubble({
             {senderName}
           </p>
         )}
-        <p className="whitespace-pre-wrap break-words text-sm">{message.body}</p>
+        <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
         <div
           className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${
             mine ? "text-white/70" : "text-secondary"

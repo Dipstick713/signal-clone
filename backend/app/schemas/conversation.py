@@ -70,3 +70,11 @@ class CreateGroupRequest(BaseModel):
 
 class MarkReadRequest(BaseModel):
     message_id: int
+
+
+class AddMembersRequest(BaseModel):
+    user_ids: list[int] = Field(min_length=1)
+
+
+class RenameGroupRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)

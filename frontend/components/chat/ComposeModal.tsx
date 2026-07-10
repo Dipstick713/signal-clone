@@ -1,84 +1,133 @@
 "use client";
 
 /**
- * "New chat" modal: search the user directory and start a 1:1 conversation.
- * (Group creation is added in a later phase.) Debounces the search query and
- * lists matching users; selecting one opens/creates the direct conversation.
+ * "New chat" modal with two modes:
+ *   - Message: search the directory and open a 1:1 conversation
+ *   - Group:   pick multiple members + a name, then create a group
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Avatar } from "@/components/Avatar";
+import { Modal } from "@/components/Modal";
 import { api } from "@/lib/api";
 import { useChat } from "@/lib/chat-store";
 import type { User } from "@/lib/types";
 
+type Mode = "direct" | "group";
+
 export function ComposeModal({ onClose }: { onClose: () => void }) {
   const startDirect = useChat((s) => s.startDirect);
+  const startGroup = useChat((s) => s.startGroup);
+
+  const [mode, setMode] = useState<Mode>("direct");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Map<number, User>>(new Map());
+  const [groupName, setGroupName] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  // Debounced directory search (runs once on mount with an empty query too).
   useEffect(() => {
     const handle = setTimeout(async () => {
-      setLoading(true);
-      try {
-        setResults(await api.searchUsers(query));
-      } finally {
-        setLoading(false);
-      }
+      setResults(await api.searchUsers(query));
     }, 200);
     return () => clearTimeout(handle);
   }, [query]);
 
-  async function pick(user: User) {
-    setBusyId(user.id);
+  async function pickDirect(user: User) {
+    setBusy(true);
     try {
       await startDirect(user.id);
       onClose();
     } finally {
-      setBusyId(null);
+      setBusy(false);
+    }
+  }
+
+  function toggleMember(user: User) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(user.id)) next.delete(user.id);
+      else next.set(user.id, user);
+      return next;
+    });
+  }
+
+  async function createGroup() {
+    if (!groupName.trim() || selected.size === 0) return;
+    setBusy(true);
+    try {
+      await startGroup(groupName.trim(), [...selected.keys()]);
+      onClose();
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <Backdrop onClose={onClose}>
-      <div className="w-full max-w-md overflow-hidden rounded-xl bg-elevated shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="font-semibold">New chat</h2>
+    <Modal onClose={onClose} title="New chat">
+      {/* Mode tabs */}
+      <div className="flex gap-1 px-3 pt-3">
+        {(["direct", "group"] as Mode[]).map((m) => (
           <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-md px-2 text-secondary transition hover:text-primary"
+            key={m}
+            onClick={() => setMode(m)}
+            className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${
+              mode === m ? "bg-signal text-white" : "bg-hover text-secondary"
+            }`}
           >
-            ✕
+            {m === "direct" ? "Message" : "Group"}
           </button>
-        </div>
+        ))}
+      </div>
 
-        <div className="p-3">
+      {mode === "group" && (
+        <div className="px-3 pt-3">
           <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or @username"
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            placeholder="Group name"
+            maxLength={128}
             className="w-full rounded-lg border border-border bg-app px-3 py-2 text-sm outline-none focus:border-signal"
           />
+          {selected.size > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[...selected.values()].map((u) => (
+                <span
+                  key={u.id}
+                  className="flex items-center gap-1 rounded-full bg-signal/15 px-2 py-0.5 text-xs text-signal"
+                >
+                  {u.display_name}
+                  <button onClick={() => toggleMember(u)} aria-label={`Remove ${u.display_name}`}>
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
+      )}
 
-        <div className="max-h-80 overflow-y-auto px-1 pb-2">
-          {loading && results.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-secondary">Searching…</p>
-          ) : results.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-secondary">
-              No users found.
-            </p>
-          ) : (
-            results.map((u) => (
+      <div className="p-3">
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or @username"
+          className="w-full rounded-lg border border-border bg-app px-3 py-2 text-sm outline-none focus:border-signal"
+        />
+      </div>
+
+      <div className="max-h-72 overflow-y-auto px-1 pb-2">
+        {results.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-secondary">No users found.</p>
+        ) : (
+          results.map((u) => {
+            const checked = selected.has(u.id);
+            return (
               <button
                 key={u.id}
-                onClick={() => pick(u)}
-                disabled={busyId !== null}
+                onClick={() => (mode === "direct" ? pickDirect(u) : toggleMember(u))}
+                disabled={busy}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-hover disabled:opacity-60"
               >
                 <Avatar name={u.display_name} color={u.avatar_color} url={u.avatar_url} size={40} />
@@ -86,37 +135,32 @@ export function ComposeModal({ onClose }: { onClose: () => void }) {
                   <p className="truncate font-medium">{u.display_name}</p>
                   <p className="truncate text-xs text-secondary">@{u.username}</p>
                 </div>
-                {busyId === u.id && (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-signal border-t-transparent" />
+                {mode === "group" && (
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full border text-xs ${
+                      checked ? "border-signal bg-signal text-white" : "border-border"
+                    }`}
+                  >
+                    {checked ? "✓" : ""}
+                  </span>
                 )}
               </button>
-            ))
-          )}
-        </div>
+            );
+          })
+        )}
       </div>
-    </Backdrop>
-  );
-}
 
-function Backdrop({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
-      onClick={onClose}
-    >
-      <div onClick={(e) => e.stopPropagation()}>{children}</div>
-    </div>
+      {mode === "group" && (
+        <div className="border-t border-border p-3">
+          <button
+            onClick={createGroup}
+            disabled={busy || !groupName.trim() || selected.size === 0}
+            className="w-full rounded-full bg-signal py-2 text-sm font-medium text-white transition hover:bg-signal-hover disabled:opacity-40"
+          >
+            Create group{selected.size > 0 ? ` · ${selected.size}` : ""}
+          </button>
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -62,6 +62,16 @@ def is_participant(db: Session, conversation_id: int, user_id: int) -> bool:
     ) is not None
 
 
+def _persist(db: Session, msg: Message) -> Message:
+    db.add(msg)
+    conv = db.get(Conversation, msg.conversation_id)
+    if conv is not None:
+        conv.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
 def create_message(
     db: Session,
     conversation_id: int,
@@ -70,19 +80,23 @@ def create_message(
     reply_to_id: int | None = None,
 ) -> Message:
     """Persist a text message and bump the conversation's activity timestamp."""
-    msg = Message(
-        conversation_id=conversation_id,
-        sender_id=sender_id,
-        body=body,
-        type="text",
-        reply_to_id=reply_to_id,
+    return _persist(
+        db,
+        Message(
+            conversation_id=conversation_id,
+            sender_id=sender_id,
+            body=body,
+            type="text",
+            reply_to_id=reply_to_id,
+        ),
     )
-    db.add(msg)
 
-    conv = db.get(Conversation, conversation_id)
-    if conv is not None:
-        conv.updated_at = datetime.now(timezone.utc)
 
-    db.commit()
-    db.refresh(msg)
-    return msg
+def create_system_message(db: Session, conversation_id: int, body: str) -> Message:
+    """Persist a system notice (e.g. membership changes)."""
+    return _persist(
+        db,
+        Message(
+            conversation_id=conversation_id, sender_id=None, body=body, type="system"
+        ),
+    )
