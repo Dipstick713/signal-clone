@@ -218,7 +218,12 @@ def get_conversation(
         avatar_url=url,
         created_by=conv.created_by,
         participants=[
-            ParticipantPublic(user=UserPublic.model_validate(p.user), role=p.role)
+            ParticipantPublic(
+                user=UserPublic.model_validate(p.user),
+                role=p.role,
+                last_read_message_id=p.last_read_message_id,
+                last_delivered_message_id=p.last_delivered_message_id,
+            )
             for p in conv.participants
         ],
         other_user=UserPublic.model_validate(other) if other else None,

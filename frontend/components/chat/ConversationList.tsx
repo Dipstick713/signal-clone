@@ -24,6 +24,7 @@ export function ConversationList({ onCompose }: { onCompose: () => void }) {
   const disconnect = useChat((s) => s.disconnect);
   const reset = useChat((s) => s.reset);
   const loading = useChat((s) => s.loadingList);
+  const presence = useChat((s) => s.presence);
 
   const [query, setQuery] = useState("");
 
@@ -101,7 +102,13 @@ export function ConversationList({ onCompose }: { onCompose: () => void }) {
                   active ? "bg-signal/10" : "hover:bg-hover"
                 }`}
               >
-                <Avatar name={c.title} color={c.avatar_color ?? "#6b6b6b"} url={c.avatar_url} size={44} />
+                <Avatar
+                  name={c.title}
+                  color={c.avatar_color ?? "#6b6b6b"}
+                  url={c.avatar_url}
+                  size={44}
+                  online={c.other_user ? presence[c.other_user.id]?.online : undefined}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate font-medium">{c.title}</span>

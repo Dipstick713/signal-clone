@@ -48,3 +48,16 @@ export function formatDateSeparator(iso: string): string {
 export function isDifferentDay(a: string, b: string): boolean {
   return toDate(a).toDateString() !== toDate(b).toDateString();
 }
+
+/** Relative last-seen label, e.g. "last seen just now", "last seen 5m ago". */
+export function formatLastSeen(iso: string): string {
+  const secs = Math.max(0, Math.floor((Date.now() - toDate(iso).getTime()) / 1000));
+  if (secs < 60) return "last seen just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `last seen ${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `last seen ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `last seen ${days}d ago`;
+  return `last seen ${toDate(iso).toLocaleDateString([], { month: "short", day: "numeric" })}`;
+}

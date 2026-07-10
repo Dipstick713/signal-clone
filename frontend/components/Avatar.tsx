@@ -7,6 +7,8 @@ interface AvatarProps {
   color: string;
   url?: string | null;
   size?: number;
+  /** Show a green presence dot in the corner when true. */
+  online?: boolean;
 }
 
 function initials(name: string): string {
@@ -16,31 +18,32 @@ function initials(name: string): string {
   return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
 }
 
-export function Avatar({ name, color, url, size = 40 }: AvatarProps) {
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return (
-      <img
-        src={url}
-        alt={name}
-        width={size}
-        height={size}
-        className="rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
+export function Avatar({ name, color, url, size = 40, online }: AvatarProps) {
+  const dotSize = Math.max(8, Math.round(size * 0.28));
   return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full font-medium text-white select-none"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: color,
-        fontSize: size * 0.4,
-      }}
-    >
-      {initials(name)}
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={name}
+          className="h-full w-full rounded-full object-cover"
+        />
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center rounded-full font-medium text-white select-none"
+          style={{ backgroundColor: color, fontSize: size * 0.4 }}
+        >
+          {initials(name)}
+        </div>
+      )}
+      {online && (
+        <span
+          className="absolute bottom-0 right-0 rounded-full border-2 border-panel bg-green-500"
+          style={{ width: dotSize, height: dotSize }}
+          aria-label="online"
+        />
+      )}
     </div>
   );
 }

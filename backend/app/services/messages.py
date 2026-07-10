@@ -8,6 +8,42 @@ from app.models.conversation import Conversation, Participant
 from app.models.message import Message
 
 
+def _advance_watermark(
+    db: Session, conversation_id: int, user_id: int, field: str, message_id: int
+) -> int | None:
+    """Advance a participant's read/delivered watermark if the id is newer.
+
+    Returns the new watermark value, or None if the user is not a participant
+    or the watermark did not move forward.
+    """
+    part = db.scalar(
+        select(Participant).where(
+            Participant.conversation_id == conversation_id,
+            Participant.user_id == user_id,
+        )
+    )
+    if part is None:
+        return None
+    current = getattr(part, field) or 0
+    if message_id <= current:
+        return None
+    setattr(part, field, message_id)
+    db.commit()
+    return message_id
+
+
+def advance_delivered(db, conversation_id, user_id, message_id) -> int | None:
+    return _advance_watermark(
+        db, conversation_id, user_id, "last_delivered_message_id", message_id
+    )
+
+
+def advance_read(db, conversation_id, user_id, message_id) -> int | None:
+    return _advance_watermark(
+        db, conversation_id, user_id, "last_read_message_id", message_id
+    )
+
+
 def participant_ids(db: Session, conversation_id: int) -> set[int]:
     rows = db.scalars(
         select(Participant.user_id).where(

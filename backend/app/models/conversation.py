@@ -59,8 +59,10 @@ class Participant(Base):
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     role: Mapped[str] = mapped_column(String(16), default="member")  # "admin"|"member"
-    # Read watermark: id of the last message this user has seen.
+    # Watermarks: id of the last message delivered to / read by this user.
+    # These power the single/double/blue tick receipt experience and unread counts.
     last_read_message_id: Mapped[int | None] = mapped_column(nullable=True)
+    last_delivered_message_id: Mapped[int | None] = mapped_column(nullable=True)
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

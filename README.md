@@ -5,7 +5,7 @@ Signal's design, UX, and core messaging workflows. Real-time 1:1 and group
 chat, delivery/read receipts, typing indicators, and presence. End-to-end
 encryption is **simulated** (per the assignment brief), not cryptographically real.
 
-> **Status:** Phase 4 — real-time 1:1 messaging over WebSocket. See the
+> **Status:** Phase 5 — receipts, typing indicators, and presence. See the
 > [build phases](#build-phases) below.
 
 ## Tech Stack
@@ -96,11 +96,21 @@ live traffic. Messages are sent optimistically and reconciled on echo.
 
 ```
 client → server   { "type": "message.send", "conversation_id", "body", "temp_id"? }
-server → client   { "type": "message.new", "temp_id"?, "message": { … } }   // fan-out to all participants
+                  { "type": "receipt.delivered" | "receipt.read", "conversation_id", "message_id" }
+                  { "type": "typing.start" | "typing.stop", "conversation_id" }
+server → client   { "type": "message.new", "temp_id"?, "message": { … } }
+                  { "type": "receipt.update", "conversation_id", "user_id", "kind", "message_id" }
+                  { "type": "typing.update", "conversation_id", "user_id", "is_typing" }
+                  { "type": "presence.update", "user_id", "is_online", "last_seen" }
+                  { "type": "presence.snapshot", "user_ids": [ … ] }   // online contacts, on connect
                   { "type": "error", "detail": "…" }
 ```
 
-Typing indicators, receipts, and presence are layered onto this channel next.
+- **Receipts** advance per-participant `last_delivered` / `last_read` watermarks;
+  the sender derives a message's tick (sent → delivered → read) by comparing
+  those watermarks against the message id.
+- **Presence** is driven by live socket connect/disconnect and announced only to
+  users who share a conversation with you.
 
 ## Getting Started
 
@@ -134,7 +144,7 @@ npm run dev                         # serves on http://localhost:3000
 2. **Auth & onboarding** — mock OTP, display name, avatar, session persistence ✅
 3. **Conversations** — list, search, contacts, seeded message history ✅
 4. **1:1 messaging** — WebSocket live send/receive, optimistic status ticks ✅
-5. Receipts, typing indicators, presence
+5. **Receipts, typing, presence** — double-check receipts, typing dots, online/last-seen ✅
 6. Group messaging — creation, members, admin controls
 7. Signal experience pass — modals, search, toasts, settings, dark mode
 8. Bonus features, deploy, and documentation

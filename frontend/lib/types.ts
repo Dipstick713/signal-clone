@@ -51,6 +51,8 @@ export interface Conversation {
 export interface ParticipantPublic {
   user: User;
   role: "admin" | "member";
+  last_read_message_id: number | null;
+  last_delivered_message_id: number | null;
 }
 
 export interface ConversationDetail {

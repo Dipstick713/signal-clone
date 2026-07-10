@@ -25,6 +25,8 @@ class ParticipantPublic(BaseModel):
 
     user: UserPublic
     role: str
+    last_read_message_id: int | None = None
+    last_delivered_message_id: int | None = None
 
 
 class ConversationListItem(BaseModel):

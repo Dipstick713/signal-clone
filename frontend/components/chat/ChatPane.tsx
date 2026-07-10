@@ -3,30 +3,56 @@
 /**
  * Right-hand chat pane for the selected conversation.
  *
- * Renders the header, the scrollable thread (date separators, sender grouping,
- * system notices, and status ticks on your own messages) and a live composer
- * that sends over the WebSocket. Messages send optimistically and reconcile
- * when the server echoes them back.
+ * Renders the header (with live presence / typing subtitle), the scrollable
+ * thread (date separators, sender grouping, system notices, and delivery/read
+ * ticks on your own messages), a typing indicator, and a composer that sends
+ * over the WebSocket and emits typing events.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar } from "@/components/Avatar";
-import { useChat, type ChatMessage, type MessageStatus } from "@/lib/chat-store";
-import { formatDateSeparator, formatTime, isDifferentDay } from "@/lib/format";
+import {
+  useChat,
+  type ChatMessage,
+  type MessageStatus,
+  type Receipt,
+} from "@/lib/chat-store";
+import { formatDateSeparator, formatLastSeen, formatTime, isDifferentDay } from "@/lib/format";
 import { useAuth } from "@/lib/store";
-import type { User } from "@/lib/types";
+import type { ConversationDetail, User } from "@/lib/types";
+
+/** Derive a message's tick state from other participants' receipt watermarks. */
+function messageStatus(
+  m: ChatMessage,
+  detail: ConversationDetail | null,
+  receipts: Record<number, Receipt>,
+  meId: number | null,
+): MessageStatus {
+  if (m.status === "sending") return "sending";
+  const others = detail?.participants.filter((p) => p.user.id !== meId) ?? [];
+  if (others.length === 0) return "sent";
+  if (others.every((p) => (receipts[p.user.id]?.read ?? 0) >= m.id)) return "read";
+  if (others.every((p) => (receipts[p.user.id]?.delivered ?? 0) >= m.id)) return "delivered";
+  return "sent";
+}
 
 export function ChatPane() {
-  const meId = useAuth((s) => s.user?.id);
+  const meId = useAuth((s) => s.user?.id) ?? null;
   const selectedId = useChat((s) => s.selectedId);
   const detail = useChat((s) => s.detail);
   const messages = useChat((s) => s.messages);
   const loading = useChat((s) => s.loadingMessages);
   const wsStatus = useChat((s) => s.wsStatus);
+  const presence = useChat((s) => s.presence);
+  const typing = useChat((s) => s.typing);
+  const otherReceipts = useChat((s) => s.otherReceipts);
   const sendMessage = useChat((s) => s.sendMessage);
+  const sendTyping = useChat((s) => s.sendTyping);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
+  const typingActive = useRef(false);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const usersById = useMemo(() => {
     const m = new Map<number, User>();
@@ -34,15 +60,46 @@ export function ChatPane() {
     return m;
   }, [detail]);
 
-  // Auto-scroll to the newest message.
+  // Ids of others currently typing in this conversation.
+  const typers = useMemo(
+    () =>
+      Object.keys(typing[selectedId ?? -1] ?? {})
+        .map(Number)
+        .filter((id) => id !== meId),
+    [typing, selectedId, meId],
+  );
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [selectedId, messages.length]);
+  }, [selectedId, messages.length, typers.length]);
+
+  function stopTyping() {
+    if (typingActive.current) {
+      typingActive.current = false;
+      sendTyping(false);
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+  }
+
+  function onDraftChange(value: string) {
+    setDraft(value);
+    if (value.trim()) {
+      if (!typingActive.current) {
+        typingActive.current = true;
+        sendTyping(true);
+      }
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(stopTyping, 2500);
+    } else {
+      stopTyping();
+    }
+  }
 
   function submit() {
     if (!draft.trim()) return;
     sendMessage(draft);
     setDraft("");
+    stopTyping();
   }
 
   if (selectedId === null) {
@@ -63,11 +120,7 @@ export function ChatPane() {
   }
 
   const isGroup = detail?.type === "group";
-  const subtitle = isGroup
-    ? `${detail?.participants.length ?? 0} members`
-    : detail?.other_user
-      ? `@${detail.other_user.username}`
-      : "";
+  const subtitle = renderSubtitle(detail, isGroup, typers, usersById, presence);
 
   return (
     <main className="flex flex-1 flex-col bg-app">
@@ -79,6 +132,11 @@ export function ChatPane() {
             color={detail.avatar_color ?? "#6b6b6b"}
             url={detail.avatar_url}
             size={38}
+            online={
+              detail.type === "direct" && detail.other_user
+                ? presence[detail.other_user.id]?.online
+                : undefined
+            }
           />
         )}
         <div className="min-w-0">
@@ -126,6 +184,7 @@ export function ChatPane() {
                     message={m}
                     mine={mine}
                     grouped={grouped}
+                    status={messageStatus(m, detail, otherReceipts, meId)}
                     showSender={isGroup && !mine && !grouped}
                     senderName={sender?.display_name}
                     senderColor={sender?.avatar_color}
@@ -133,6 +192,7 @@ export function ChatPane() {
                 </div>
               );
             })}
+            {typers.length > 0 && <TypingBubble />}
           </div>
         )}
       </div>
@@ -142,7 +202,8 @@ export function ChatPane() {
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <textarea
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onBlur={stopTyping}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -167,6 +228,29 @@ export function ChatPane() {
   );
 }
 
+function renderSubtitle(
+  detail: ConversationDetail | null,
+  isGroup: boolean,
+  typers: number[],
+  usersById: Map<number, User>,
+  presence: Record<number, { online: boolean; last_seen?: string }>,
+): string {
+  if (typers.length > 0) {
+    if (!isGroup) return "typing…";
+    const names = typers.map((id) => usersById.get(id)?.display_name?.split(" ")[0] ?? "Someone");
+    if (names.length === 1) return `${names[0]} is typing…`;
+    if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+    return "Several people are typing…";
+  }
+  if (isGroup) return `${detail?.participants.length ?? 0} members`;
+  const other = detail?.other_user;
+  if (!other) return "";
+  const p = presence[other.id];
+  if (p?.online) return "Online";
+  const lastSeen = p?.last_seen ?? other.last_seen_at;
+  return lastSeen ? formatLastSeen(lastSeen) : `@${other.username}`;
+}
+
 function DateSeparator({ iso }: { iso: string }) {
   return (
     <div className="my-3 flex justify-center">
@@ -177,10 +261,27 @@ function DateSeparator({ iso }: { iso: string }) {
   );
 }
 
+function TypingBubble() {
+  return (
+    <div className="mt-2 flex justify-start">
+      <div className="flex gap-1 rounded-2xl bg-bubble-in px-4 py-3">
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            className="h-2 w-2 animate-bounce rounded-full bg-secondary"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   mine,
   grouped,
+  status,
   showSender,
   senderName,
   senderColor,
@@ -188,6 +289,7 @@ function MessageBubble({
   message: ChatMessage;
   mine: boolean;
   grouped: boolean;
+  status: MessageStatus;
   showSender: boolean;
   senderName?: string;
   senderColor?: string;
@@ -211,7 +313,7 @@ function MessageBubble({
           }`}
         >
           <span>{formatTime(message.created_at)}</span>
-          {mine && <StatusTicks status={message.status ?? "sent"} />}
+          {mine && <StatusTicks status={status} />}
         </div>
       </div>
     </div>
