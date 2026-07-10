@@ -1,0 +1,25 @@
+# Render blueprint for the FastAPI backend.
+# Deploy: Render Dashboard → New → Blueprint → pick this repo.
+# After the frontend is live on Vercel, set CORS_ORIGINS to its URL.
+services:
+  - type: web
+    name: signal-clone-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MOCK_OTP
+        value: "123456"
+      # Exact production frontend origin (set after deploying to Vercel).
+      - key: CORS_ORIGINS
+        sync: false
+      # Allow Vercel preview deployments too.
+      - key: CORS_ORIGIN_REGEX
+        value: "https://.*\\.vercel\\.app"

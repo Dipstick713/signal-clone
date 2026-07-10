@@ -85,90 +85,114 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def populate(db) -> None:
+    """Insert demo users, conversations, and messages into a fresh database.
+
+    Non-destructive — callers ensure the DB is empty first. Used both by the
+    CLI (`seed()`) and by the app's startup auto-seed on empty databases.
+    """
+    users: dict[str, User] = {}
+    for username, display_name, about in USERS:
+        u = User(
+            username=username,
+            display_name=display_name,
+            about=about,
+            avatar_color=color_for(username),
+            last_seen_at=_utcnow(),
+        )
+        db.add(u)
+        users[username] = u
+    db.commit()
+    for u in users.values():
+        db.refresh(u)
+
+    def add_messages(conv: Conversation, script):
+        """Attach messages with increasing timestamps; bump conv.updated_at."""
+        newest = None
+        for sender, text, minutes_ago in script:
+            ts = _utcnow() - timedelta(minutes=minutes_ago)
+            m = Message(
+                conversation_id=conv.id,
+                sender_id=users[sender].id if sender else None,
+                body=text,
+                type="text" if sender else "system",
+                created_at=ts,
+            )
+            db.add(m)
+            newest = ts if newest is None else max(newest, ts)
+        if newest is not None:
+            conv.updated_at = newest
+
+    # Direct conversations
+    for a, b, script in DIRECTS:
+        conv = Conversation(type="direct", created_at=_utcnow())
+        conv.participants = [
+            Participant(user_id=users[a].id),
+            Participant(user_id=users[b].id),
+        ]
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+        add_messages(conv, script)
+        db.commit()
+
+    # Group conversations
+    for name, admin, members, script in GROUPS:
+        conv = Conversation(
+            type="group",
+            name=name,
+            avatar_color=color_for(name),
+            created_by=users[admin].id,
+            created_at=_utcnow(),
+        )
+        conv.participants = [
+            Participant(
+                user_id=users[m].id,
+                role="admin" if m == admin else "member",
+            )
+            for m in members
+        ]
+        # A leading system message, then the scripted chat.
+        system = Message(
+            sender_id=None,
+            type="system",
+            body=f"{users[admin].display_name} created the group",
+            created_at=_utcnow() - timedelta(minutes=script[0][2] + 5),
+        )
+        conv.messages = [system]
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+        add_messages(conv, script)
+        db.commit()
+
+
 def seed() -> None:
+    """CLI entrypoint: reset the database and populate it deterministically."""
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-
     db = SessionLocal()
     try:
-        users: dict[str, User] = {}
-        for username, display_name, about in USERS:
-            u = User(
-                username=username,
-                display_name=display_name,
-                about=about,
-                avatar_color=color_for(username),
-                last_seen_at=_utcnow(),
-            )
-            db.add(u)
-            users[username] = u
-        db.commit()
-        for u in users.values():
-            db.refresh(u)
-
-        def add_messages(conv: Conversation, script):
-            """Attach messages with increasing timestamps; bump conv.updated_at."""
-            newest = None
-            for sender, text, minutes_ago in script:
-                ts = _utcnow() - timedelta(minutes=minutes_ago)
-                m = Message(
-                    conversation_id=conv.id,
-                    sender_id=users[sender].id if sender else None,
-                    body=text,
-                    type="text" if sender else "system",
-                    created_at=ts,
-                )
-                db.add(m)
-                newest = ts if newest is None else max(newest, ts)
-            if newest is not None:
-                conv.updated_at = newest
-
-        # Direct conversations
-        for a, b, script in DIRECTS:
-            conv = Conversation(type="direct", created_at=_utcnow())
-            conv.participants = [
-                Participant(user_id=users[a].id),
-                Participant(user_id=users[b].id),
-            ]
-            db.add(conv)
-            db.commit()
-            db.refresh(conv)
-            add_messages(conv, script)
-            db.commit()
-
-        # Group conversations
-        for name, admin, members, script in GROUPS:
-            conv = Conversation(
-                type="group",
-                name=name,
-                avatar_color=color_for(name),
-                created_by=users[admin].id,
-                created_at=_utcnow(),
-            )
-            conv.participants = [
-                Participant(
-                    user_id=users[m].id,
-                    role="admin" if m == admin else "member",
-                )
-                for m in members
-            ]
-            # A leading system message, then the scripted chat.
-            system = Message(
-                sender_id=None,
-                type="system",
-                body=f"{users[admin].display_name} created the group",
-                created_at=_utcnow() - timedelta(minutes=script[0][2] + 5),
-            )
-            conv.messages = [system]
-            db.add(conv)
-            db.commit()
-            db.refresh(conv)
-            add_messages(conv, script)
-            db.commit()
-
-        print(f"Seeded {len(users)} users, "
-              f"{len(DIRECTS)} direct + {len(GROUPS)} group conversations.")
+        populate(db)
+        print(
+            f"Seeded {len(USERS)} users, "
+            f"{len(DIRECTS)} direct + {len(GROUPS)} group conversations."
+        )
         print("All users sign in with OTP 123456. Try username 'alice'.")
+    finally:
+        db.close()
+
+
+def seed_if_empty() -> None:
+    """Populate the database on first boot if it has no users yet.
+
+    Keeps the hosted demo usable on platforms with an ephemeral disk, where the
+    SQLite file is recreated on each deploy/restart.
+    """
+    db = SessionLocal()
+    try:
+        if db.query(User.id).first() is None:
+            populate(db)
     finally:
         db.close()
 

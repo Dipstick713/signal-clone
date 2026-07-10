@@ -22,8 +22,14 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7  # one week
     mock_otp: str = "123456"
 
-    # CORS — comma-separated list of allowed frontend origins.
+    # Seed demo data on startup if the database is empty (useful on hosts with
+    # an ephemeral disk). Safe to leave on — it is a no-op once data exists.
+    seed_on_startup: bool = True
+
+    # CORS — comma-separated list of allowed frontend origins, plus an optional
+    # regex (e.g. to allow Vercel preview deployments).
     cors_origins: str = "http://localhost:3000"
+    cors_origin_regex: str | None = None
 
     @property
     def cors_origin_list(self) -> list[str]:

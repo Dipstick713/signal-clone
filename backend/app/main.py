@@ -20,6 +20,12 @@ import app.models  # noqa: F401,E402
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    if settings.seed_on_startup:
+        # Populate demo data on an empty database (e.g. first boot on a host
+        # with an ephemeral disk). No-op once data exists.
+        from seed import seed_if_empty
+
+        seed_if_empty()
     yield
 
 
@@ -28,6 +34,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
