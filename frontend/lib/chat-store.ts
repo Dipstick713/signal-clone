@@ -60,6 +60,7 @@ interface ChatState {
   startGroup: (name: string, memberIds: number[]) => Promise<number>;
   sendMessage: (body: string) => void;
   sendTyping: (isTyping: boolean) => void;
+  toggleReaction: (messageId: number, emoji: string) => void;
   refreshDetail: () => Promise<void>;
   clearSelection: () => void;
   reset: () => void;
@@ -206,6 +207,7 @@ export const useChat = create<ChatState>((set, get) => ({
       created_at: new Date().toISOString(),
       edited_at: null,
       deleted_at: null,
+      reactions: [],
       status: "sending",
       temp_id: tempId,
     };
@@ -233,6 +235,10 @@ export const useChat = create<ChatState>((set, get) => ({
       type: isTyping ? "typing.start" : "typing.stop",
       conversation_id: conversationId,
     });
+  },
+
+  toggleReaction: (messageId, emoji) => {
+    realtime.send({ type: "reaction.toggle", message_id: messageId, emoji });
   },
 
   reset: () =>
@@ -268,7 +274,30 @@ function handleEvent(event: WsEvent, set: SetState, get: () => ChatState) {
       return handlePresenceSnapshot(event, set);
     case "conversation.removed":
       return handleConversationRemoved(event, set, get);
+    case "reaction.update":
+      return handleReactionUpdate(event, set, get);
   }
+}
+
+function handleReactionUpdate(event: WsEvent, set: SetState, get: () => ChatState) {
+  const conversationId = event.conversation_id as number;
+  if (conversationId !== get().selectedId) return;
+  const messageId = event.message_id as number;
+  const userId = event.user_id as number;
+  const emoji = event.emoji as string;
+  const added = event.added as boolean;
+
+  set((s) => ({
+    messages: s.messages.map((m) => {
+      if (m.id !== messageId) return m;
+      const reactions = added
+        ? [...m.reactions, { emoji, user_id: userId }]
+        : m.reactions.filter(
+            (r) => !(r.emoji === emoji && r.user_id === userId),
+          );
+      return { ...m, reactions };
+    }),
+  }));
 }
 
 function handleMessageNew(event: WsEvent, set: SetState, get: () => ChatState) {

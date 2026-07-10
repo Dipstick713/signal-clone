@@ -6,6 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.user import UserPublic
 
 
+class ReactionPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    emoji: str
+    user_id: int
+
+
 class MessagePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -18,6 +25,7 @@ class MessagePublic(BaseModel):
     created_at: datetime
     edited_at: datetime | None
     deleted_at: datetime | None
+    reactions: list[ReactionPublic] = []
 
 
 class ParticipantPublic(BaseModel):

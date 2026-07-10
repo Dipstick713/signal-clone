@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.conversation import Conversation, Participant
-from app.models.message import Message
+from app.models.message import Message, MessageReaction
 
 
 def _advance_watermark(
@@ -90,6 +90,33 @@ def create_message(
             reply_to_id=reply_to_id,
         ),
     )
+
+
+def toggle_reaction(
+    db: Session, message_id: int, user_id: int, emoji: str
+) -> tuple[Message, bool] | None:
+    """Add or remove a user's emoji reaction on a message (toggle).
+
+    Returns (message, added) where `added` is True if the reaction was added,
+    False if it was removed. Returns None if the message doesn't exist.
+    """
+    msg = db.get(Message, message_id)
+    if msg is None:
+        return None
+    existing = db.scalar(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message_id,
+            MessageReaction.user_id == user_id,
+            MessageReaction.emoji == emoji,
+        )
+    )
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+        return msg, False
+    db.add(MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
+    db.commit()
+    return msg, True
 
 
 def create_system_message(db: Session, conversation_id: int, body: str) -> Message:

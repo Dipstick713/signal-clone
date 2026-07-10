@@ -24,6 +24,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.database import SessionLocal
 from app.core.security import decode_access_token
+from app.models.message import Message
 from app.models.user import User
 from app.schemas.conversation import MessagePublic
 from app.services.messages import (
@@ -32,6 +33,7 @@ from app.services.messages import (
     create_message,
     is_participant,
     participant_ids,
+    toggle_reaction,
 )
 from app.services.presence import contacts_of
 from app.ws.manager import manager
@@ -103,6 +105,40 @@ async def _handle_receipt(user_id: int, data: dict, kind: str) -> None:
     )
 
 
+async def _handle_reaction(user_id: int, data: dict) -> None:
+    message_id = data.get("message_id")
+    emoji = data.get("emoji")
+    if not isinstance(message_id, int) or not isinstance(emoji, str) or not emoji:
+        return
+
+    db = SessionLocal()
+    try:
+        # Authorise against the message's conversation before mutating anything.
+        msg = db.get(Message, message_id)
+        if msg is None or not is_participant(db, msg.conversation_id, user_id):
+            return
+        conversation_id = msg.conversation_id
+        result = toggle_reaction(db, message_id, user_id, emoji)
+        if result is None:
+            return
+        _, added = result
+        recipients = participant_ids(db, conversation_id)
+    finally:
+        db.close()
+
+    await manager.send_to_users(
+        recipients,
+        {
+            "type": "reaction.update",
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "user_id": user_id,
+            "emoji": emoji,
+            "added": added,
+        },
+    )
+
+
 async def _handle_typing(user_id: int, data: dict, is_typing: bool) -> None:
     conversation_id = data.get("conversation_id")
     if not isinstance(conversation_id, int):
@@ -139,6 +175,8 @@ async def _dispatch(user_id: int, data: dict) -> None:
             await _handle_typing(user_id, data, True)
         case "typing.stop":
             await _handle_typing(user_id, data, False)
+        case "reaction.toggle":
+            await _handle_reaction(user_id, data)
 
 
 # --------------------------------------------------------------------------- #

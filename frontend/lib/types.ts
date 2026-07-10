@@ -22,6 +22,11 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface Reaction {
+  emoji: string;
+  user_id: number;
+}
+
 export interface Message {
   id: number;
   conversation_id: number;
@@ -32,6 +37,7 @@ export interface Message {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
+  reactions: Reaction[];
 }
 
 export type ConversationType = "direct" | "group";

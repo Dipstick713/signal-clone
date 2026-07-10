@@ -49,6 +49,7 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
   const otherReceipts = useChat((s) => s.otherReceipts);
   const sendMessage = useChat((s) => s.sendMessage);
   const sendTyping = useChat((s) => s.sendTyping);
+  const toggleReaction = useChat((s) => s.toggleReaction);
   const clearSelection = useChat((s) => s.clearSelection);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -218,10 +219,12 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
                     message={m}
                     mine={mine}
                     grouped={grouped}
+                    meId={meId}
                     status={messageStatus(m, detail, otherReceipts, meId)}
                     showSender={isGroup && !mine && !grouped}
                     senderName={sender?.display_name}
                     senderColor={sender?.avatar_color}
+                    onReact={(emoji) => toggleReaction(m.id, emoji)}
                   />
                 </div>
               );
@@ -311,46 +314,169 @@ function TypingBubble() {
   );
 }
 
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+/** Aggregate raw reactions into { emoji, count, mine } chips. */
+function aggregateReactions(message: ChatMessage, meId: number | null) {
+  const map = new Map<string, { count: number; mine: boolean }>();
+  for (const r of message.reactions) {
+    const entry = map.get(r.emoji) ?? { count: 0, mine: false };
+    entry.count += 1;
+    if (r.user_id === meId) entry.mine = true;
+    map.set(r.emoji, entry);
+  }
+  return [...map.entries()].map(([emoji, v]) => ({ emoji, ...v }));
+}
+
 function MessageBubble({
   message,
   mine,
   grouped,
+  meId,
   status,
   showSender,
   senderName,
   senderColor,
+  onReact,
 }: {
   message: ChatMessage;
   mine: boolean;
   grouped: boolean;
+  meId: number | null;
   status: MessageStatus;
   showSender: boolean;
   senderName?: string;
   senderColor?: string;
+  onReact: (emoji: string) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const chips = aggregateReactions(message, meId);
+
   return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
-      <div
-        className={`max-w-[75%] rounded-2xl px-3 py-2 ${
-          mine ? "bg-signal text-white" : "bg-bubble-in text-primary"
-        }`}
-      >
-        {showSender && senderName && (
-          <p className="mb-0.5 text-xs font-semibold" style={{ color: senderColor }}>
-            {senderName}
-          </p>
-        )}
-        <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
+    <div
+      className={`group relative flex items-center gap-2 ${
+        mine ? "justify-end" : "justify-start"
+      } ${grouped ? "mt-0.5" : "mt-2"}`}
+      onMouseLeave={() => setPickerOpen(false)}
+    >
+      {/* React affordance (left of own messages) */}
+      {mine && (
+        <ReactAction
+          open={pickerOpen}
+          onToggle={() => setPickerOpen((v) => !v)}
+          onPick={(e) => {
+            onReact(e);
+            setPickerOpen(false);
+          }}
+          align="right"
+        />
+      )}
+
+      <div className="flex max-w-[75%] flex-col">
         <div
-          className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${
-            mine ? "text-white/70" : "text-secondary"
+          className={`rounded-2xl px-3 py-2 ${
+            mine ? "bg-signal text-white" : "bg-bubble-in text-primary"
           }`}
         >
-          <span>{formatTime(message.created_at)}</span>
-          {mine && <StatusTicks status={status} />}
+          {showSender && senderName && (
+            <p className="mb-0.5 text-xs font-semibold" style={{ color: senderColor }}>
+              {senderName}
+            </p>
+          )}
+          <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
+          <div
+            className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${
+              mine ? "text-white/70" : "text-secondary"
+            }`}
+          >
+            <span>{formatTime(message.created_at)}</span>
+            {mine && <StatusTicks status={status} />}
+          </div>
         </div>
+
+        {chips.length > 0 && (
+          <div className={`mt-1 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
+            {chips.map((c) => (
+              <button
+                key={c.emoji}
+                onClick={() => onReact(c.emoji)}
+                className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition ${
+                  c.mine
+                    ? "border-signal bg-signal/15 text-signal"
+                    : "border-border bg-elevated text-secondary hover:bg-hover"
+                }`}
+              >
+                <span>{c.emoji}</span>
+                <span>{c.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* React affordance (right of others' messages) */}
+      {!mine && (
+        <ReactAction
+          open={pickerOpen}
+          onToggle={() => setPickerOpen((v) => !v)}
+          onPick={(e) => {
+            onReact(e);
+            setPickerOpen(false);
+          }}
+          align="left"
+        />
+      )}
     </div>
+  );
+}
+
+function ReactAction({
+  open,
+  onToggle,
+  onPick,
+  align,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onPick: (emoji: string) => void;
+  align: "left" | "right";
+}) {
+  return (
+    <div className="relative self-center">
+      <button
+        onClick={onToggle}
+        aria-label="React"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-secondary opacity-0 transition hover:bg-hover hover:text-primary group-hover:opacity-100"
+      >
+        <SmileIcon />
+      </button>
+      {open && (
+        <div
+          className={`absolute bottom-9 z-20 flex gap-1 rounded-full border border-border bg-elevated px-2 py-1 shadow-lg ${
+            align === "right" ? "right-0" : "left-0"
+          }`}
+        >
+          {REACTION_EMOJIS.map((e) => (
+            <button
+              key={e}
+              onClick={() => onPick(e)}
+              className="rounded-full px-1 text-lg transition hover:scale-125"
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SmileIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+    </svg>
   );
 }
 
