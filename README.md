@@ -5,8 +5,8 @@ Signal's design, UX, and core messaging workflows. Real-time 1:1 and group
 chat, delivery/read receipts, typing indicators, and presence. End-to-end
 encryption is **simulated** (per the assignment brief), not cryptographically real.
 
-> **Status:** Phase 6 — group messaging with admin controls. See the
-> [build phases](#build-phases) below.
+> **Status:** Phase 7 — Signal-experience pass (dark mode, settings, toasts,
+> responsive). See the [build phases](#build-phases) below.
 
 ## Tech Stack
 
@@ -149,13 +149,21 @@ npm run dev                         # serves on http://localhost:3000
 4. **1:1 messaging** — WebSocket live send/receive, optimistic status ticks ✅
 5. **Receipts, typing, presence** — double-check receipts, typing dots, online/last-seen ✅
 6. **Group messaging** — creation, member management, admin controls ✅
-7. Signal experience pass — settings, toasts, dark mode, responsive, keyboard
+7. **Signal experience pass** — nav rail, settings, toasts, dark mode, responsive, shortcuts ✅
 8. Bonus features, deploy, and documentation
+
+## Placeholders ("Coming soon")
+
+Voice/video **Calls**, **Stories**, and **Linked devices** are present as
+"Coming soon" modals (reachable from the nav rail and Settings). Encryption is
+simulated — a `🔒 simulated` marker stands in for real E2E crypto.
 
 ## Assumptions
 
 - Encryption is mocked/simulated; no real cryptographic key exchange.
 - Accounts are identified by **username** with a fixed mock OTP (no real SMS).
 - Online/last-seen is derived from live WebSocket connections.
+- **Bonus delivered:** dark mode, responsive (mobile/tablet/desktop), and a
+  keyboard shortcut (⌘/Ctrl-K to start a new chat).
 
 _Database schema and API overview will be documented as those layers land._

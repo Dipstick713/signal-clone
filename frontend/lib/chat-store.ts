@@ -14,6 +14,7 @@ import { create } from "zustand";
 
 import { api } from "./api";
 import { useAuth } from "./store";
+import { toast } from "./toast";
 import type { Conversation, ConversationDetail, Message } from "./types";
 import { realtime, type WsEvent, type WsStatus } from "./ws";
 
@@ -60,6 +61,7 @@ interface ChatState {
   sendMessage: (body: string) => void;
   sendTyping: (isTyping: boolean) => void;
   refreshDetail: () => Promise<void>;
+  clearSelection: () => void;
   reset: () => void;
 }
 
@@ -184,6 +186,9 @@ export const useChat = create<ChatState>((set, get) => ({
     if (get().selectedId === id) set({ detail });
   },
 
+  clearSelection: () =>
+    set({ selectedId: null, detail: null, messages: [], otherReceipts: {} }),
+
   sendMessage: (body) => {
     const text = body.trim();
     const conversationId = get().selectedId;
@@ -297,6 +302,23 @@ function handleMessageNew(event: WsEvent, set: SetState, get: () => ChatState) {
 
   // A system message (membership/name change) may have altered the member list.
   if (msg.type === "system" && isSelected) void get().refreshDetail();
+
+  // Notify on a text message we didn't send and aren't currently reading.
+  if (
+    msg.type === "text" &&
+    !isMine &&
+    (!isSelected || (typeof document !== "undefined" && document.hidden))
+  ) {
+    const conv = get().conversations.find((c) => c.id === msg.conversation_id);
+    if (conv) {
+      toast.show({
+        title: conv.title,
+        body: msg.body,
+        color: conv.avatar_color ?? undefined,
+        onClick: () => void get().select(conv.id),
+      });
+    }
+  }
 
   // Report delivery for any received message; add read if we're viewing it.
   if (!isMine) {

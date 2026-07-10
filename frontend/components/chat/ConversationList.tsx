@@ -15,24 +15,21 @@ import { useChat } from "@/lib/chat-store";
 import { formatListTime } from "@/lib/format";
 import { useAuth } from "@/lib/store";
 
-export function ConversationList({ onCompose }: { onCompose: () => void }) {
+export function ConversationList({
+  onCompose,
+  onSettings,
+}: {
+  onCompose: () => void;
+  onSettings: () => void;
+}) {
   const user = useAuth((s) => s.user);
-  const authLogout = useAuth((s) => s.logout);
   const conversations = useChat((s) => s.conversations);
   const selectedId = useChat((s) => s.selectedId);
   const select = useChat((s) => s.select);
-  const disconnect = useChat((s) => s.disconnect);
-  const reset = useChat((s) => s.reset);
   const loading = useChat((s) => s.loadingList);
   const presence = useChat((s) => s.presence);
 
   const [query, setQuery] = useState("");
-
-  function logout() {
-    disconnect();
-    reset();
-    authLogout();
-  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -41,34 +38,38 @@ export function ConversationList({ onCompose }: { onCompose: () => void }) {
   }, [conversations, query]);
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-panel">
+    <aside
+      className={`${
+        selectedId !== null ? "hidden md:flex" : "flex"
+      } w-full shrink-0 flex-col border-r border-border bg-panel md:w-80`}
+    >
       {/* User header */}
-      <header className="flex items-center gap-3 px-4 py-3">
-        {user && (
-          <Avatar
-            name={user.display_name}
-            color={user.avatar_color}
-            url={user.avatar_url}
-            size={36}
-          />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{user?.display_name}</p>
-          <p className="truncate text-xs text-secondary">@{user?.username}</p>
-        </div>
+      <header className="flex items-center gap-2 px-4 py-3">
+        <button
+          onClick={onSettings}
+          title="Settings"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition hover:opacity-80"
+        >
+          {user && (
+            <Avatar
+              name={user.display_name}
+              color={user.avatar_color}
+              url={user.avatar_url}
+              size={36}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{user?.display_name}</p>
+            <p className="truncate text-xs text-secondary">@{user?.username}</p>
+          </div>
+        </button>
         <button
           onClick={onCompose}
-          title="New chat"
+          title="New chat (⌘K)"
           aria-label="New chat"
           className="flex h-8 w-8 items-center justify-center rounded-full text-secondary transition hover:bg-hover hover:text-primary"
         >
           <PencilIcon />
-        </button>
-        <button
-          onClick={logout}
-          className="rounded-md px-2 py-1 text-xs text-secondary transition hover:bg-hover hover:text-primary"
-        >
-          Log out
         </button>
       </header>
 

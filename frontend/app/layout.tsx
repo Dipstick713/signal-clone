@@ -18,8 +18,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Apply the stored theme before paint to avoid a flash of the wrong theme.
+  const noFlashTheme = `(function(){try{var t=localStorage.getItem('signal-theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+
   return (
     <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: noFlashTheme }} />
+      </head>
       <body className="h-full">
         <SessionProvider>{children}</SessionProvider>
       </body>

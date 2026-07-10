@@ -37,7 +37,7 @@ function messageStatus(
   return "sent";
 }
 
-export function ChatPane() {
+export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }) {
   const meId = useAuth((s) => s.user?.id) ?? null;
   const selectedId = useChat((s) => s.selectedId);
   const detail = useChat((s) => s.detail);
@@ -49,6 +49,7 @@ export function ChatPane() {
   const otherReceipts = useChat((s) => s.otherReceipts);
   const sendMessage = useChat((s) => s.sendMessage);
   const sendTyping = useChat((s) => s.sendTyping);
+  const clearSelection = useChat((s) => s.clearSelection);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
@@ -106,7 +107,7 @@ export function ChatPane() {
 
   if (selectedId === null) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center bg-app">
+      <main className="hidden flex-1 flex-col items-center justify-center bg-app md:flex">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-signal text-2xl text-on-accent">
             💬
@@ -126,12 +127,19 @@ export function ChatPane() {
 
   return (
     <main className="flex flex-1 flex-col bg-app">
-      {/* Header — clickable for groups to open the info/management panel */}
-      <header className="border-b border-border">
+      {/* Header — group title opens the info/management panel */}
+      <header className="flex items-center gap-1 border-b border-border px-2 py-2">
+        <button
+          onClick={clearSelection}
+          aria-label="Back"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition hover:bg-hover md:hidden"
+        >
+          <BackIcon />
+        </button>
         <button
           onClick={() => isGroup && setInfoOpen(true)}
           disabled={!isGroup}
-          className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${
+          className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1 text-left ${
             isGroup ? "transition hover:bg-hover" : "cursor-default"
           }`}
         >
@@ -152,6 +160,20 @@ export function ChatPane() {
             <p className="truncate font-semibold">{detail?.title ?? "…"}</p>
             <p className="truncate text-xs text-secondary">{subtitle}</p>
           </div>
+        </button>
+        <button
+          onClick={() => onComingSoon("Calls")}
+          aria-label="Video call"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition hover:bg-hover hover:text-primary"
+        >
+          <VideoIcon />
+        </button>
+        <button
+          onClick={() => onComingSoon("Calls")}
+          aria-label="Voice call"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition hover:bg-hover hover:text-primary"
+        >
+          <PhoneIcon />
         </button>
       </header>
 
@@ -356,6 +378,40 @@ function SendIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2z" />
+    </svg>
+  );
+}
+
+const headerIcon = {
+  width: 20,
+  height: 20,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+function BackIcon() {
+  return (
+    <svg {...headerIcon}>
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+function VideoIcon() {
+  return (
+    <svg {...headerIcon}>
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
+  );
+}
+function PhoneIcon() {
+  return (
+    <svg {...headerIcon}>
+      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z" />
     </svg>
   );
 }

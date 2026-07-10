@@ -11,6 +11,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { useAuth } from "@/lib/store";
+import { useTheme } from "@/lib/theme";
 
 const PUBLIC_ROUTES = ["/welcome"];
 
@@ -20,10 +21,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Revalidate persisted token once on mount.
+  const initTheme = useTheme((s) => s.init);
+
+  // Revalidate persisted token and initialise the theme once on mount.
   useEffect(() => {
     void hydrate();
-  }, [hydrate]);
+    initTheme();
+  }, [hydrate, initTheme]);
 
   // Redirect based on auth status.
   useEffect(() => {
