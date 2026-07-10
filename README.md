@@ -8,10 +8,11 @@ encryption is **simulated** (per the assignment brief), not cryptographically re
 > **Status:** Feature-complete — all core features plus bonus reactions, replies,
 > and image attachments. See the [build phases](#build-phases) below.
 
-<!-- After deploying, fill these in: -->
-**🔗 Live demo:** _add your Vercel URL_ · **API:** _add your Render URL_
+**🔗 Live demo:** <https://signal-clone-two.vercel.app> · **API:** <https://signal-clone-api-lkup.onrender.com>
 
 > Sign in with any seeded username (e.g. **alice**, **bob**, **carol**) and OTP **123456**.
+> Open two browsers (e.g. `alice` and `bob`) to see real-time messaging.
+> _The API runs on Render's free tier and sleeps when idle — the first request may take ~30–60s to wake._
 
 ## Tech Stack
 
