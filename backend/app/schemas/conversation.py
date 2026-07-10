@@ -13,6 +13,17 @@ class ReactionPublic(BaseModel):
     user_id: int
 
 
+class MessagePreview(BaseModel):
+    """Slim view of a quoted message (no reactions/recursion)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sender_id: int | None
+    body: str
+    type: str
+
+
 class MessagePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -22,6 +33,7 @@ class MessagePublic(BaseModel):
     body: str
     type: str
     reply_to_id: int | None
+    reply_to: MessagePreview | None = None
     created_at: datetime
     edited_at: datetime | None
     deleted_at: datetime | None

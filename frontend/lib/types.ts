@@ -27,6 +27,13 @@ export interface Reaction {
   user_id: number;
 }
 
+export interface MessagePreview {
+  id: number;
+  sender_id: number | null;
+  body: string;
+  type: "text" | "system";
+}
+
 export interface Message {
   id: number;
   conversation_id: number;
@@ -34,6 +41,7 @@ export interface Message {
   body: string;
   type: "text" | "system";
   reply_to_id: number | null;
+  reply_to: MessagePreview | null;
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;

@@ -55,6 +55,7 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const typingActive = useRef(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,9 +102,18 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
 
   function submit() {
     if (!draft.trim()) return;
-    sendMessage(draft);
+    sendMessage(draft, replyingTo?.id ?? null);
     setDraft("");
+    setReplyingTo(null);
     stopTyping();
+  }
+
+  function scrollToMessage(id: number) {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-signal", "rounded-2xl");
+    setTimeout(() => el.classList.remove("ring-2", "ring-signal", "rounded-2xl"), 1200);
   }
 
   if (selectedId === null) {
@@ -212,8 +222,11 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
               }
 
               const sender = m.sender_id ? usersById.get(m.sender_id) : undefined;
+              const replyName = m.reply_to?.sender_id
+                ? usersById.get(m.reply_to.sender_id)?.display_name
+                : undefined;
               return (
-                <div key={m.temp_id ?? m.id}>
+                <div key={m.temp_id ?? m.id} id={`msg-${m.id}`}>
                   {showDate && <DateSeparator iso={m.created_at} />}
                   <MessageBubble
                     message={m}
@@ -224,7 +237,10 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
                     showSender={isGroup && !mine && !grouped}
                     senderName={sender?.display_name}
                     senderColor={sender?.avatar_color}
+                    replyName={replyName}
                     onReact={(emoji) => toggleReaction(m.id, emoji)}
+                    onReply={() => setReplyingTo(m)}
+                    onQuoteClick={() => m.reply_to && scrollToMessage(m.reply_to.id)}
                   />
                 </div>
               );
@@ -236,6 +252,26 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
 
       {/* Composer */}
       <footer className="border-t border-border px-4 py-3">
+        {replyingTo && (
+          <div className="mx-auto mb-2 flex max-w-2xl items-center gap-2 rounded-lg border-l-2 border-signal bg-hover px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-signal">
+                Replying to{" "}
+                {replyingTo.sender_id === meId
+                  ? "yourself"
+                  : usersById.get(replyingTo.sender_id ?? -1)?.display_name ?? "message"}
+              </p>
+              <p className="truncate text-xs text-secondary">{replyingTo.body}</p>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              aria-label="Cancel reply"
+              className="rounded-md px-1 text-secondary transition hover:text-primary"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <textarea
             value={draft}
@@ -337,7 +373,10 @@ function MessageBubble({
   showSender,
   senderName,
   senderColor,
+  replyName,
   onReact,
+  onReply,
+  onQuoteClick,
 }: {
   message: ChatMessage;
   mine: boolean;
@@ -347,27 +386,31 @@ function MessageBubble({
   showSender: boolean;
   senderName?: string;
   senderColor?: string;
+  replyName?: string;
   onReact: (emoji: string) => void;
+  onReply: () => void;
+  onQuoteClick: () => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const chips = aggregateReactions(message, meId);
 
   return (
     <div
-      className={`group relative flex items-center gap-2 ${
+      className={`group relative flex items-center gap-1.5 ${
         mine ? "justify-end" : "justify-start"
       } ${grouped ? "mt-0.5" : "mt-2"}`}
       onMouseLeave={() => setPickerOpen(false)}
     >
-      {/* React affordance (left of own messages) */}
+      {/* Actions (left of own messages) */}
       {mine && (
-        <ReactAction
+        <BubbleActions
           open={pickerOpen}
           onToggle={() => setPickerOpen((v) => !v)}
           onPick={(e) => {
             onReact(e);
             setPickerOpen(false);
           }}
+          onReply={onReply}
           align="right"
         />
       )}
@@ -382,6 +425,23 @@ function MessageBubble({
             <p className="mb-0.5 text-xs font-semibold" style={{ color: senderColor }}>
               {senderName}
             </p>
+          )}
+          {message.reply_to && (
+            <button
+              onClick={onQuoteClick}
+              className={`mb-1 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs ${
+                mine ? "border-white/60 bg-white/15" : "border-signal bg-signal/10"
+              }`}
+            >
+              <span className="block font-semibold">
+                {message.reply_to.sender_id === meId ? "You" : replyName ?? "Message"}
+              </span>
+              <span className="block truncate opacity-80">
+                {message.reply_to.type === "system"
+                  ? message.reply_to.body
+                  : message.reply_to.body || "Attachment"}
+              </span>
+            </button>
           )}
           <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
           <div
@@ -414,15 +474,16 @@ function MessageBubble({
         )}
       </div>
 
-      {/* React affordance (right of others' messages) */}
+      {/* Actions (right of others' messages) */}
       {!mine && (
-        <ReactAction
+        <BubbleActions
           open={pickerOpen}
           onToggle={() => setPickerOpen((v) => !v)}
           onPick={(e) => {
             onReact(e);
             setPickerOpen(false);
           }}
+          onReply={onReply}
           align="left"
         />
       )}
@@ -430,19 +491,28 @@ function MessageBubble({
   );
 }
 
-function ReactAction({
+function BubbleActions({
   open,
   onToggle,
   onPick,
+  onReply,
   align,
 }: {
   open: boolean;
   onToggle: () => void;
   onPick: (emoji: string) => void;
+  onReply: () => void;
   align: "left" | "right";
 }) {
   return (
-    <div className="relative self-center">
+    <div className="relative flex items-center gap-0.5 self-center">
+      <button
+        onClick={onReply}
+        aria-label="Reply"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-secondary opacity-0 transition hover:bg-hover hover:text-primary group-hover:opacity-100"
+      >
+        <ReplyIcon />
+      </button>
       <button
         onClick={onToggle}
         aria-label="React"
@@ -476,6 +546,15 @@ function SmileIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
       <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+    </svg>
+  );
+}
+
+function ReplyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 17l-5-5 5-5" />
+      <path d="M4 12h11a5 5 0 0 1 5 5v1" />
     </svg>
   );
 }

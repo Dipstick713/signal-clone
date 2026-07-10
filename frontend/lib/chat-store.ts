@@ -58,7 +58,7 @@ interface ChatState {
   select: (id: number) => Promise<void>;
   startDirect: (userId: number) => Promise<void>;
   startGroup: (name: string, memberIds: number[]) => Promise<number>;
-  sendMessage: (body: string) => void;
+  sendMessage: (body: string, replyToId?: number | null) => void;
   sendTyping: (isTyping: boolean) => void;
   toggleReaction: (messageId: number, emoji: string) => void;
   refreshDetail: () => Promise<void>;
@@ -190,20 +190,27 @@ export const useChat = create<ChatState>((set, get) => ({
   clearSelection: () =>
     set({ selectedId: null, detail: null, messages: [], otherReceipts: {} }),
 
-  sendMessage: (body) => {
+  sendMessage: (body, replyToId = null) => {
     const text = body.trim();
     const conversationId = get().selectedId;
     if (!text || conversationId === null) return;
 
     const meId = useAuth.getState().user?.id ?? null;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Build an optimistic quoted preview from the message being replied to.
+    const replied = replyToId
+      ? get().messages.find((m) => m.id === replyToId)
+      : undefined;
     const optimistic: ChatMessage = {
       id: -Date.now(), // temporary negative id, replaced on echo
       conversation_id: conversationId,
       sender_id: meId,
       body: text,
       type: "text",
-      reply_to_id: null,
+      reply_to_id: replyToId,
+      reply_to: replied
+        ? { id: replied.id, sender_id: replied.sender_id, body: replied.body, type: replied.type }
+        : null,
       created_at: new Date().toISOString(),
       edited_at: null,
       deleted_at: null,
@@ -225,6 +232,7 @@ export const useChat = create<ChatState>((set, get) => ({
       conversation_id: conversationId,
       body: text,
       temp_id: tempId,
+      reply_to_id: replyToId,
     });
   },
 
