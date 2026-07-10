@@ -5,7 +5,14 @@
  * from the auth store on every request. Non-2xx responses throw `ApiError`
  * carrying the backend's `detail` message so the UI can surface it.
  */
-import type { AuthResponse, AuthStartResponse, User } from "./types";
+import type {
+  AuthResponse,
+  AuthStartResponse,
+  Conversation,
+  ConversationDetail,
+  Message,
+  User,
+} from "./types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
@@ -71,5 +78,37 @@ export const api = {
     request<User>("/api/users/me", {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+
+  searchUsers: (q: string) =>
+    request<User[]>(`/api/users/search?q=${encodeURIComponent(q)}`),
+
+  listConversations: () => request<Conversation[]>("/api/conversations"),
+
+  getConversation: (id: number) =>
+    request<ConversationDetail>(`/api/conversations/${id}`),
+
+  createDirect: (userId: number) =>
+    request<Conversation>("/api/conversations/direct", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    }),
+
+  createGroup: (name: string, memberIds: number[]) =>
+    request<Conversation>("/api/conversations/group", {
+      method: "POST",
+      body: JSON.stringify({ name, member_ids: memberIds }),
+    }),
+
+  getMessages: (conversationId: number, before?: number) =>
+    request<Message[]>(
+      `/api/conversations/${conversationId}/messages` +
+        (before ? `?before=${before}` : ""),
+    ),
+
+  markRead: (conversationId: number, messageId: number) =>
+    request<void>(`/api/conversations/${conversationId}/read`, {
+      method: "POST",
+      body: JSON.stringify({ message_id: messageId }),
     }),
 };

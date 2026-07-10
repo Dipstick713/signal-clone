@@ -21,3 +21,45 @@ export interface AuthResponse {
   token_type: string;
   user: User;
 }
+
+export interface Message {
+  id: number;
+  conversation_id: number;
+  sender_id: number | null;
+  body: string;
+  type: "text" | "system";
+  reply_to_id: number | null;
+  created_at: string;
+  edited_at: string | null;
+  deleted_at: string | null;
+}
+
+export type ConversationType = "direct" | "group";
+
+export interface Conversation {
+  id: number;
+  type: ConversationType;
+  title: string;
+  avatar_color: string | null;
+  avatar_url: string | null;
+  updated_at: string;
+  unread_count: number;
+  last_message: Message | null;
+  other_user: User | null;
+}
+
+export interface ParticipantPublic {
+  user: User;
+  role: "admin" | "member";
+}
+
+export interface ConversationDetail {
+  id: number;
+  type: ConversationType;
+  title: string;
+  avatar_color: string | null;
+  avatar_url: string | null;
+  created_by: number | null;
+  participants: ParticipantPublic[];
+  other_user: User | null;
+}

@@ -1,69 +1,36 @@
 "use client";
 
 /**
- * Main app shell (protected by SessionProvider).
- *
- * Phase 2 shows the authenticated user in the rail header with a logout
- * control; the conversation list and chat pane are filled in later phases.
+ * Main app view (protected by SessionProvider): the Signal two-pane layout
+ * wiring the conversation list rail and the chat pane, plus the "new chat"
+ * compose modal. Loads the conversation list on mount.
  */
-import { Avatar } from "@/components/Avatar";
+import { useEffect, useState } from "react";
+
+import { ChatPane } from "@/components/chat/ChatPane";
+import { ComposeModal } from "@/components/chat/ComposeModal";
+import { ConversationList } from "@/components/chat/ConversationList";
+import { useChat } from "@/lib/chat-store";
 import { useAuth } from "@/lib/store";
 
 export default function Home() {
-  const user = useAuth((s) => s.user);
-  const logout = useAuth((s) => s.logout);
+  const userId = useAuth((s) => s.user?.id);
+  const fetchConversations = useChat((s) => s.fetchConversations);
+  const reset = useChat((s) => s.reset);
+  const [composeOpen, setComposeOpen] = useState(false);
+
+  // (Re)load the conversation list whenever the signed-in user changes.
+  useEffect(() => {
+    if (userId === undefined) return;
+    reset();
+    void fetchConversations();
+  }, [userId, fetchConversations, reset]);
 
   return (
     <div className="flex h-full">
-      {/* Left rail: conversation list */}
-      <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-panel">
-        <header className="flex items-center gap-3 px-4 py-3">
-          {user && (
-            <Avatar
-              name={user.display_name}
-              color={user.avatar_color}
-              url={user.avatar_url}
-              size={36}
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">
-              {user?.display_name}
-            </p>
-            <p className="truncate text-xs text-secondary">@{user?.username}</p>
-          </div>
-          <button
-            onClick={logout}
-            className="rounded-md px-2 py-1 text-xs text-secondary transition hover:bg-hover hover:text-primary"
-          >
-            Log out
-          </button>
-        </header>
-        <div className="px-4 pb-3">
-          <div className="rounded-full bg-hover px-4 py-2 text-sm text-secondary">
-            Search
-          </div>
-        </div>
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-secondary">
-          No conversations yet.
-        </div>
-      </aside>
-
-      {/* Right pane: chat / empty state */}
-      <main className="flex flex-1 flex-col items-center justify-center bg-app">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-signal text-2xl text-on-accent">
-            💬
-          </div>
-          <h2 className="text-xl font-semibold">
-            Welcome, {user?.display_name?.split(" ")[0]}
-          </h2>
-          <p className="max-w-xs text-sm text-secondary">
-            Select a conversation to start messaging. End-to-end encryption is
-            simulated for this demo.
-          </p>
-        </div>
-      </main>
+      <ConversationList onCompose={() => setComposeOpen(true)} />
+      <ChatPane />
+      {composeOpen && <ComposeModal onClose={() => setComposeOpen(false)} />}
     </div>
   );
 }
