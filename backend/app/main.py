@@ -11,12 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.routers import auth, users
+
+# Import models so they register with Base.metadata before create_all.
+import app.models  # noqa: F401,E402
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup. Models are imported for their side effect of
-    # registering with Base.metadata (none yet in Phase 1).
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -30,6 +32,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health")
