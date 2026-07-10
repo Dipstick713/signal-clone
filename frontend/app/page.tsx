@@ -3,7 +3,8 @@
 /**
  * Main app view (protected by SessionProvider): the Signal two-pane layout
  * wiring the conversation list rail and the chat pane, plus the "new chat"
- * compose modal. Loads the conversation list on mount.
+ * compose modal. Loads the conversation list and opens the realtime socket
+ * on mount.
  */
 import { useEffect, useState } from "react";
 
@@ -15,16 +16,19 @@ import { useAuth } from "@/lib/store";
 
 export default function Home() {
   const userId = useAuth((s) => s.user?.id);
+  const token = useAuth((s) => s.token);
   const fetchConversations = useChat((s) => s.fetchConversations);
+  const connect = useChat((s) => s.connect);
   const reset = useChat((s) => s.reset);
   const [composeOpen, setComposeOpen] = useState(false);
 
-  // (Re)load the conversation list whenever the signed-in user changes.
+  // (Re)load the list and open the socket whenever the signed-in user changes.
   useEffect(() => {
-    if (userId === undefined) return;
+    if (userId === undefined || !token) return;
     reset();
     void fetchConversations();
-  }, [userId, fetchConversations, reset]);
+    connect(token);
+  }, [userId, token, fetchConversations, connect, reset]);
 
   return (
     <div className="flex h-full">

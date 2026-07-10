@@ -5,7 +5,7 @@ Signal's design, UX, and core messaging workflows. Real-time 1:1 and group
 chat, delivery/read receipts, typing indicators, and presence. End-to-end
 encryption is **simulated** (per the assignment brief), not cryptographically real.
 
-> **Status:** Phase 3 — conversations, contacts, and message history. See the
+> **Status:** Phase 4 — real-time 1:1 messaging over WebSocket. See the
 > [build phases](#build-phases) below.
 
 ## Tech Stack
@@ -87,6 +87,20 @@ joined_at              watermark   reply_to_id        FK → messages.id (quoted
 | GET    | `/api/conversations/{id}`             | Conversation detail + participants   |
 | GET    | `/api/conversations/{id}/messages`    | Paginated history (`?before=&limit=`)|
 | POST   | `/api/conversations/{id}/read`        | Advance read watermark               |
+| WS     | `/ws?token=<jwt>`                     | Realtime channel (see events below)  |
+
+### WebSocket events
+
+Sending goes over the socket so delivery is instant and one channel carries all
+live traffic. Messages are sent optimistically and reconciled on echo.
+
+```
+client → server   { "type": "message.send", "conversation_id", "body", "temp_id"? }
+server → client   { "type": "message.new", "temp_id"?, "message": { … } }   // fan-out to all participants
+                  { "type": "error", "detail": "…" }
+```
+
+Typing indicators, receipts, and presence are layered onto this channel next.
 
 ## Getting Started
 
@@ -119,7 +133,7 @@ npm run dev                         # serves on http://localhost:3000
 1. **Scaffold** — repos, FastAPI + SQLite, Next.js + Tailwind, health check ✅
 2. **Auth & onboarding** — mock OTP, display name, avatar, session persistence ✅
 3. **Conversations** — list, search, contacts, seeded message history ✅
-4. 1:1 messaging — WebSocket live send/receive, status ticks
+4. **1:1 messaging** — WebSocket live send/receive, optimistic status ticks ✅
 5. Receipts, typing indicators, presence
 6. Group messaging — creation, members, admin controls
 7. Signal experience pass — modals, search, toasts, settings, dark mode

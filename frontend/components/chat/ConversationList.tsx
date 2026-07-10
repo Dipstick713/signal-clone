@@ -17,13 +17,21 @@ import { useAuth } from "@/lib/store";
 
 export function ConversationList({ onCompose }: { onCompose: () => void }) {
   const user = useAuth((s) => s.user);
-  const logout = useAuth((s) => s.logout);
+  const authLogout = useAuth((s) => s.logout);
   const conversations = useChat((s) => s.conversations);
   const selectedId = useChat((s) => s.selectedId);
   const select = useChat((s) => s.select);
+  const disconnect = useChat((s) => s.disconnect);
+  const reset = useChat((s) => s.reset);
   const loading = useChat((s) => s.loadingList);
 
   const [query, setQuery] = useState("");
+
+  function logout() {
+    disconnect();
+    reset();
+    authLogout();
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
