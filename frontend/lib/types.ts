@@ -27,6 +27,15 @@ export interface Reaction {
   user_id: number;
 }
 
+export interface Attachment {
+  id: number;
+  mime: string;
+  filename: string;
+  width: number | null;
+  height: number | null;
+  size: number;
+}
+
 export interface MessagePreview {
   id: number;
   sender_id: number | null;
@@ -42,6 +51,7 @@ export interface Message {
   type: "text" | "system";
   reply_to_id: number | null;
   reply_to: MessagePreview | null;
+  attachment: Attachment | null;
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;

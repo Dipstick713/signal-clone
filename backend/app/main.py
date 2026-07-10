@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routers import auth, conversations, users, ws
+from app.routers import attachments, auth, conversations, users, ws
 
 # Import models so they register with Base.metadata before create_all.
 import app.models  # noqa: F401,E402
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(conversations.router)
+app.include_router(attachments.router)
 app.include_router(ws.router)
 
 

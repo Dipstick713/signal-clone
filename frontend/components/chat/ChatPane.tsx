@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar } from "@/components/Avatar";
 import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
+import { api, attachmentUrl } from "@/lib/api";
 import {
   useChat,
   type ChatMessage,
@@ -20,7 +21,8 @@ import {
 } from "@/lib/chat-store";
 import { formatDateSeparator, formatLastSeen, formatTime, isDifferentDay } from "@/lib/format";
 import { useAuth } from "@/lib/store";
-import type { ConversationDetail, User } from "@/lib/types";
+import { toast } from "@/lib/toast";
+import type { Attachment, ConversationDetail, User } from "@/lib/types";
 
 /** Derive a message's tick state from other participants' receipt watermarks. */
 function messageStatus(
@@ -53,9 +55,13 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
   const clearSelection = useChat((s) => s.clearSelection);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [pendingImage, setPendingImage] = useState<Attachment | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const typingActive = useRef(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,11 +107,26 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
   }
 
   function submit() {
-    if (!draft.trim()) return;
-    sendMessage(draft, replyingTo?.id ?? null);
+    if (!draft.trim() && !pendingImage) return;
+    sendMessage(draft, replyingTo?.id ?? null, pendingImage);
     setDraft("");
     setReplyingTo(null);
+    setPendingImage(null);
     stopTyping();
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setUploading(true);
+    try {
+      setPendingImage(await api.uploadAttachment(file));
+    } catch {
+      toast.show({ title: "Upload failed", body: "Could not attach that image." });
+    } finally {
+      setUploading(false);
+    }
   }
 
   function scrollToMessage(id: number) {
@@ -241,6 +262,7 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
                     onReact={(emoji) => toggleReaction(m.id, emoji)}
                     onReply={() => setReplyingTo(m)}
                     onQuoteClick={() => m.reply_to && scrollToMessage(m.reply_to.id)}
+                    onImageClick={(url) => setLightbox(url)}
                   />
                 </div>
               );
@@ -272,7 +294,47 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
             </button>
           </div>
         )}
+        {(pendingImage || uploading) && (
+          <div className="mx-auto mb-2 flex max-w-2xl items-center gap-3 rounded-lg bg-hover px-3 py-2">
+            {uploading ? (
+              <span className="h-12 w-12 animate-pulse rounded bg-secondary/30" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={attachmentUrl(pendingImage!.id)}
+                alt={pendingImage!.filename}
+                className="h-12 w-12 rounded object-cover"
+              />
+            )}
+            <span className="flex-1 truncate text-xs text-secondary">
+              {uploading ? "Uploading…" : pendingImage!.filename}
+            </span>
+            {!uploading && (
+              <button
+                onClick={() => setPendingImage(null)}
+                aria-label="Remove image"
+                className="rounded-md px-1 text-secondary transition hover:text-primary"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
         <div className="mx-auto flex max-w-2xl items-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            onChange={onPickFile}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach image"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-secondary transition hover:bg-hover hover:text-primary"
+          >
+            <PaperclipIcon />
+          </button>
           <textarea
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
@@ -289,7 +351,7 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
           />
           <button
             onClick={submit}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() && !pendingImage}
             aria-label="Send"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-signal text-white transition hover:bg-signal-hover disabled:opacity-40"
           >
@@ -297,6 +359,16 @@ export function ChatPane({ onComingSoon }: { onComingSoon: (f: string) => void }
           </button>
         </div>
       </footer>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setLightbox(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" className="max-h-full max-w-full rounded-lg" />
+        </div>
+      )}
     </main>
   );
 }
@@ -377,6 +449,7 @@ function MessageBubble({
   onReact,
   onReply,
   onQuoteClick,
+  onImageClick,
 }: {
   message: ChatMessage;
   mine: boolean;
@@ -390,9 +463,11 @@ function MessageBubble({
   onReact: (emoji: string) => void;
   onReply: () => void;
   onQuoteClick: () => void;
+  onImageClick: (url: string) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const chips = aggregateReactions(message, meId);
+  const imageUrl = message.attachment ? attachmentUrl(message.attachment.id) : null;
 
   return (
     <div
@@ -443,7 +518,22 @@ function MessageBubble({
               </span>
             </button>
           )}
-          <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
+          {imageUrl && (
+            <button
+              onClick={() => onImageClick(imageUrl)}
+              className="mb-1 block overflow-hidden rounded-lg"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt={message.attachment?.filename ?? "image"}
+                className="max-h-72 max-w-full cursor-pointer object-cover"
+              />
+            </button>
+          )}
+          {message.body && (
+            <p className="whitespace-pre-wrap wrap-break-word text-sm">{message.body}</p>
+          )}
           <div
             className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${
               mine ? "text-white/70" : "text-secondary"
@@ -555,6 +645,14 @@ function ReplyIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 17l-5-5 5-5" />
       <path d="M4 12h11a5 5 0 0 1 5 5v1" />
+    </svg>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
     </svg>
   );
 }

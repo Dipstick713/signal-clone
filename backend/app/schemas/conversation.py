@@ -13,6 +13,17 @@ class ReactionPublic(BaseModel):
     user_id: int
 
 
+class AttachmentPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mime: str
+    filename: str
+    width: int | None
+    height: int | None
+    size: int
+
+
 class MessagePreview(BaseModel):
     """Slim view of a quoted message (no reactions/recursion)."""
 
@@ -34,6 +45,7 @@ class MessagePublic(BaseModel):
     type: str
     reply_to_id: int | None
     reply_to: MessagePreview | None = None
+    attachment: AttachmentPublic | None = None
     created_at: datetime
     edited_at: datetime | None
     deleted_at: datetime | None

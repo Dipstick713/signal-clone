@@ -6,6 +6,7 @@
  * carrying the backend's `detail` message so the UI can surface it.
  */
 import type {
+  Attachment,
   AuthResponse,
   AuthStartResponse,
   Conversation,
@@ -14,8 +15,13 @@ import type {
   User,
 } from "./types";
 
-const API_URL =
+export const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
+
+/** Absolute URL for an attachment's raw bytes (used directly in <img src>). */
+export function attachmentUrl(id: number): string {
+  return `${API_URL}/api/attachments/${id}/content`;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -111,6 +117,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message_id: messageId }),
     }),
+
+  // Multipart upload — let the browser set the Content-Type/boundary itself.
+  uploadAttachment: async (file: File): Promise<Attachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    const headers = new Headers();
+    if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+    const res = await fetch(`${API_URL}/api/attachments`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json())?.detail ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.json() as Promise<Attachment>;
+  },
 
   addMembers: (conversationId: number, userIds: number[]) =>
     request<ConversationDetail>(`/api/conversations/${conversationId}/members`, {

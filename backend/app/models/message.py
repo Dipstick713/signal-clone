@@ -50,6 +50,11 @@ class Message(Base):
         back_populates="message",
         cascade="all, delete-orphan",
     )
+    attachment: Mapped["Attachment | None"] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class MessageReaction(Base):
@@ -75,3 +80,7 @@ class MessageReaction(Base):
     )
 
     message: Mapped["Message"] = relationship(back_populates="reactions")
+
+
+# Imported after class definitions to satisfy relationship() string references.
+from app.models.attachment import Attachment  # noqa: E402

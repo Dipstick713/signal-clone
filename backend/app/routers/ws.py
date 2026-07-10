@@ -24,6 +24,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.database import SessionLocal
 from app.core.security import decode_access_token
+from app.models.attachment import Attachment
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.conversation import MessagePublic
@@ -53,8 +54,10 @@ async def _handle_message_send(user_id: int, data: dict) -> None:
     body = (data.get("body") or "").strip()
     temp_id = data.get("temp_id")
     reply_to_id = data.get("reply_to_id")
+    attachment_id = data.get("attachment_id")
 
-    if not isinstance(conversation_id, int) or not body:
+    # A message needs either text or an attachment.
+    if not isinstance(conversation_id, int) or (not body and not attachment_id):
         return
 
     db = SessionLocal()
@@ -65,6 +68,20 @@ async def _handle_message_send(user_id: int, data: dict) -> None:
             )
             return
         msg = create_message(db, conversation_id, user_id, body, reply_to_id)
+
+        # Bind an uploaded attachment to this message (only the uploader's own,
+        # and only if it hasn't already been attached elsewhere).
+        if isinstance(attachment_id, int):
+            attachment = db.get(Attachment, attachment_id)
+            if (
+                attachment is not None
+                and attachment.uploader_id == user_id
+                and attachment.message_id is None
+            ):
+                attachment.message_id = msg.id
+                db.commit()
+                db.refresh(msg)
+
         payload = {
             "type": "message.new",
             "temp_id": temp_id,

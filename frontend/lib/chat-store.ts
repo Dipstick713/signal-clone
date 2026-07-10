@@ -15,7 +15,12 @@ import { create } from "zustand";
 import { api } from "./api";
 import { useAuth } from "./store";
 import { toast } from "./toast";
-import type { Conversation, ConversationDetail, Message } from "./types";
+import type {
+  Attachment,
+  Conversation,
+  ConversationDetail,
+  Message,
+} from "./types";
 import { realtime, type WsEvent, type WsStatus } from "./ws";
 
 export type MessageStatus = "sending" | "sent" | "delivered" | "read";
@@ -58,7 +63,11 @@ interface ChatState {
   select: (id: number) => Promise<void>;
   startDirect: (userId: number) => Promise<void>;
   startGroup: (name: string, memberIds: number[]) => Promise<number>;
-  sendMessage: (body: string, replyToId?: number | null) => void;
+  sendMessage: (
+    body: string,
+    replyToId?: number | null,
+    attachment?: Attachment | null,
+  ) => void;
   sendTyping: (isTyping: boolean) => void;
   toggleReaction: (messageId: number, emoji: string) => void;
   refreshDetail: () => Promise<void>;
@@ -190,10 +199,10 @@ export const useChat = create<ChatState>((set, get) => ({
   clearSelection: () =>
     set({ selectedId: null, detail: null, messages: [], otherReceipts: {} }),
 
-  sendMessage: (body, replyToId = null) => {
+  sendMessage: (body, replyToId = null, attachment = null) => {
     const text = body.trim();
     const conversationId = get().selectedId;
-    if (!text || conversationId === null) return;
+    if ((!text && !attachment) || conversationId === null) return;
 
     const meId = useAuth.getState().user?.id ?? null;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -211,6 +220,7 @@ export const useChat = create<ChatState>((set, get) => ({
       reply_to: replied
         ? { id: replied.id, sender_id: replied.sender_id, body: replied.body, type: replied.type }
         : null,
+      attachment: attachment ?? null,
       created_at: new Date().toISOString(),
       edited_at: null,
       deleted_at: null,
@@ -233,6 +243,7 @@ export const useChat = create<ChatState>((set, get) => ({
       body: text,
       temp_id: tempId,
       reply_to_id: replyToId,
+      attachment_id: attachment?.id ?? null,
     });
   },
 

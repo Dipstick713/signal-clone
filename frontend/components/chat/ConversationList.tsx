@@ -93,7 +93,10 @@ export function ConversationList({
           </p>
         ) : (
           filtered.map((c) => {
-            const preview = c.last_message?.body ?? "No messages yet";
+            const preview = c.last_message
+              ? c.last_message.body ||
+                (c.last_message.attachment ? "📷 Photo" : "")
+              : "No messages yet";
             const active = c.id === selectedId;
             return (
               <button
